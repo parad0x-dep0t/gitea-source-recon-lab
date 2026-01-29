@@ -142,5 +142,7 @@ output:
   message: Hardcoded password detected
   recommendation: Attempt credential reuse across services
 ```
-
+---
+> Note: This document defines the planned rule engine design.
+> No detection rules are implemented at this stage.
 
