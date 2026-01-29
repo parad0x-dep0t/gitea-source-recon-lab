@@ -214,3 +214,6 @@ Each category will map to:
 - Suggested attack chains
 
 Example:
+Secrets → Immediate exploitation → Auth pivot
+Endpoints → Input analysis → RCE chain
+Paths → Traversal → Config leak → Secret reuse
