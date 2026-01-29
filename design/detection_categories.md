@@ -217,3 +217,12 @@ Example:
 - Secrets → Immediate exploitation → Auth pivot
 - Endpoints → Input analysis → RCE chain
 - Paths → Traversal → Config leak → Secret reuse
+
+---
+
+## 5. Design Rule
+
+> If a finding does not help an attacker move forward,
+> it should not be prioritized.
+
+This ensures the tool remains **CTF-focused and signal-rich**.
