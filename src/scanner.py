@@ -7,6 +7,7 @@ Step 6: Finding storage and priority sorting.
 
 import os
 import argparse
+import json
 from rules import RULES
 
 
@@ -30,14 +31,16 @@ def is_supported_file(file_name):
     return ext.lower() in SUPPORTED_EXTENSIONS
 
 
-def apply_rules(file_path, line, line_number):
+
+def apply_rules(file_path, line, line_number, scan_mode):
     """
     Apply all detection rules to a single line.
     Store findings instead of printing immediately.
+    Scan Mode
     """
     for rule in RULES:
         # Filter rules based on scan mode
-        if CURRENT_SCAN_MODE != "all":
+        if scan_mode != "all":
             if CURRENT_SCAN_MODE == "secrets" and rule["category"] != "SECRET":
                 continue
             if CURRENT_SCAN_MODE == "endpoints" and rule["category"] != "ENDPOINT":
@@ -74,21 +77,21 @@ def apply_rules(file_path, line, line_number):
 
             FINDINGS.append(finding)
 
-def scan_file(file_path):
+def scan_file(file_path, scan_mode):
     try:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             for line_number, line in enumerate(f, start=1):
-                apply_rules(file_path, line, line_number)
+                apply_rules(file_path, line, line_number, scan_mode)
     except Exception as e:
         print(f"[ERROR] Could not read {file_path}: {e}")
 
 
-def traverse_directory(root_path):
+def traverse_directory(root_path, scan_mode):
     for root, dirs, files in os.walk(root_path):
         for file_name in files:
             if is_supported_file(file_name):
                 full_path = os.path.join(root, file_name)
-                scan_file(full_path)
+                scan_file(full_path, scan_mode)
 
 
 def priority_sort_key(finding):
@@ -186,7 +189,9 @@ def print_findings():
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="Gitea Source Recon Scanner"
+        prog="gitea-recon",
+        description="Gitea Source Code Recon Scanner (CTF-focused)",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
     parser.add_argument(
@@ -198,33 +203,70 @@ def parse_arguments():
         "--scan",
         choices=["all", "secrets", "endpoints", "sinks", "sources", "paths"],
         default="all",
-        help="Specify category to scan for (default: all)"
+        help="Specify category to scan"
+    )
+
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Export findings in JSON format"
+    )
+
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress banner and non-essential output"
     )
 
     return parser.parse_args()
 
-def main():
-    global CURRENT_SCAN_MODE
 
+def main():
     args = parse_arguments()
+
     target_directory = args.directory
     scan_mode = args.scan
-
-    # Set global scan mode AFTER parsing args
-    CURRENT_SCAN_MODE = scan_mode
+    quiet_mode = args.quiet
+    json_output = args.json
 
     if not os.path.isdir(target_directory):
         print(f"[!] Directory not found: {target_directory}")
         return
 
-    print(f"[*] Scanning directory: {target_directory}")
-    print(f"[*] Scan mode: {scan_mode}")
+    if not quiet_mode:
+        print("========================================")
+        print("   Gitea Source Recon Scanner")
+        print("   CTF-Focused Static Analysis Tool")
+        print("========================================")
+        print(f"[*] Directory: {target_directory}")
+        print(f"[*] Scan mode: {scan_mode}\n")
 
-    traverse_directory(target_directory)
-    print_findings()
-    detect_basic_correlations()
-    
+    traverse_directory(target_directory, scan_mode)
 
+    if json_output:
+        export_json()
+    else:
+        print_findings()
+        detect_basic_correlations()
+        print_summary()
+
+
+def print_summary():
+    print("=== SUMMARY ===\n")
+
+    summary = {}
+
+    for finding in FINDINGS:
+        category = finding["category"]
+        summary[category] = summary.get(category, 0) + 1
+
+    for category, count in summary.items():
+        print(f"{category}: {count}")
+
+    print(f"\nTotal Findings: {len(FINDINGS)}\n")
+
+def export_json():
+    print(json.dumps(FINDINGS, indent=4))
 
 if __name__ == "__main__":
     main()
