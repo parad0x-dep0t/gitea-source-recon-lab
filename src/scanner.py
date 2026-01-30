@@ -91,6 +91,42 @@ def priority_sort_key(finding):
     return priority_map.get(finding["priority"], 99)
 
 
+def detect_basic_correlations():
+    """
+    Detect simple SOURCE → SINK correlation within same file.
+    """
+    file_map = {}
+
+    # Group findings by file
+    for finding in FINDINGS:
+        file_name = finding["file"]
+        category = finding["category"]
+
+        if file_name not in file_map:
+            file_map[file_name] = set()
+
+        file_map[file_name].add(category)
+
+    # Check for SOURCE + SINK in same file
+    print("\n=== CORRELATION WARNINGS ===\n")
+
+    correlation_found = False
+
+    for file_name, categories in file_map.items():
+        if "SOURCE" in categories and "SINK" in categories:
+            correlation_found = True
+            print(f"  Potential RCE Chain Detected in: {file_name}")
+            print("    SOURCE and SINK found in same file.\n")
+
+        if "SOURCE" in categories and "FILE_SINK" in categories:
+            correlation_found = True
+            print(f"  Potential Path Traversal Chain in: {file_name}")
+            print("    SOURCE and FILE_SINK found in same file.\n")
+
+    if not correlation_found:
+        print("No obvious SOURCE → SINK correlations detected.\n")
+
+
 def print_findings():
     if not FINDINGS:
         print("\n[+] No findings detected.")
