@@ -100,12 +100,15 @@ def print_findings():
 
     # Sort findings by priority
     sorted_findings = sorted(FINDINGS, key=priority_sort_key)
-
+    
     for finding in sorted_findings:
         print(f"[{finding['priority']}][{finding['category']}] {finding['file']}:{finding['line']}")
-        print(f"  Code: {finding['code']}")
+        if finding["category"] == "ENDPOINT":
+            print(f"  Route:  {finding.get('route')}")
+            print(f"  Method: {finding.get('method')}")
+        else:
+            print(f"  Code: {finding.get('code')}")
         print(f"  Why:  {finding['description']}\n")
-
 
 def main():
     target_directory = "./test_repo"
