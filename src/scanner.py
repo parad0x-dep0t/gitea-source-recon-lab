@@ -2,11 +2,11 @@
 scanner.py
 
 MVP source code scanner.
-Step 4: Add first detection rule (hardcoded secret).
+Step 6: Finding storage and priority sorting.
 """
 
 import os
-import re
+from rules import RULES
 
 
 # Supported file extensions
@@ -19,12 +19,8 @@ SUPPORTED_EXTENSIONS = {
     ".conf"
 }
 
-
-# === FIRST DETECTION RULE ===
-HARDCODED_PASSWORD_REGEX = re.compile(
-    r'(password|passwd|pwd|db_pass|db_password)\s*=\s*["\'][^"\']+["\']',
-    re.IGNORECASE
-)
+# Global findings list
+FINDINGS = []
 
 
 def is_supported_file(file_name):
@@ -32,19 +28,30 @@ def is_supported_file(file_name):
     return ext.lower() in SUPPORTED_EXTENSIONS
 
 
+def apply_rules(file_path, line, line_number):
+    """
+    Apply all detection rules to a single line.
+    Store findings instead of printing immediately.
+    """
+    for rule in RULES:
+        if rule["pattern"].search(line):
+            finding = {
+                "priority": rule["priority"],
+                "category": rule["category"],
+                "rule_id": rule["id"],
+                "file": file_path,
+                "line": line_number,
+                "code": line.strip(),
+                "description": rule["description"]
+            }
+            FINDINGS.append(finding)
+
+
 def scan_file(file_path):
     try:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             for line_number, line in enumerate(f, start=1):
-
-                # Apply hardcoded password rule
-                if HARDCODED_PASSWORD_REGEX.search(line):
-                    print("\n[!!! P0 SECRET DETECTED !!!]")
-                    print(f"File: {file_path}")
-                    print(f"Line: {line_number}")
-                    print(f"Code: {line.strip()}")
-                    print("Why this matters: Hardcoded credentials may allow direct authentication.\n")
-
+                apply_rules(file_path, line, line_number)
     except Exception as e:
         print(f"[ERROR] Could not read {file_path}: {e}")
 
@@ -57,6 +64,36 @@ def traverse_directory(root_path):
                 scan_file(full_path)
 
 
+def priority_sort_key(finding):
+    """
+    Convert priority label into sortable value.
+    Lower number = higher priority.
+    """
+    priority_map = {
+        "P0": 0,
+        "P1": 1,
+        "P2": 2,
+        "P3": 3
+    }
+    return priority_map.get(finding["priority"], 99)
+
+
+def print_findings():
+    if not FINDINGS:
+        print("\n[+] No findings detected.")
+        return
+
+    print("\n=== SCAN RESULTS ===\n")
+
+    # Sort findings by priority
+    sorted_findings = sorted(FINDINGS, key=priority_sort_key)
+
+    for finding in sorted_findings:
+        print(f"[{finding['priority']}][{finding['category']}] {finding['file']}:{finding['line']}")
+        print(f"  Code: {finding['code']}")
+        print(f"  Why:  {finding['description']}\n")
+
+
 def main():
     target_directory = "./test_repo"
 
@@ -66,6 +103,7 @@ def main():
 
     print(f"[*] Scanning directory: {target_directory}")
     traverse_directory(target_directory)
+    print_findings()
 
 
 if __name__ == "__main__":
