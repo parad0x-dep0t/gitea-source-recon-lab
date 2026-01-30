@@ -6,6 +6,7 @@ Step 6: Finding storage and priority sorting.
 """
 
 import os
+import argparse
 from rules import RULES
 
 
@@ -21,6 +22,7 @@ SUPPORTED_EXTENSIONS = {
 
 # Global findings list
 FINDINGS = []
+CURRENT_SCAN_MODE = "all"
 
 
 def is_supported_file(file_name):
@@ -34,6 +36,18 @@ def apply_rules(file_path, line, line_number):
     Store findings instead of printing immediately.
     """
     for rule in RULES:
+        # Filter rules based on scan mode
+        if CURRENT_SCAN_MODE != "all":
+            if CURRENT_SCAN_MODE == "secrets" and rule["category"] != "SECRET":
+                continue
+            if CURRENT_SCAN_MODE == "endpoints" and rule["category"] != "ENDPOINT":
+                continue
+            if CURRENT_SCAN_MODE == "sinks" and rule["category"] != "SINK":
+                continue
+            if CURRENT_SCAN_MODE == "sources" and rule["category"] != "SOURCE":
+                continue
+            if CURRENT_SCAN_MODE == "paths" and rule["category"] not in ["PATH", "FILE_SINK"]:
+                continue
         match = rule["pattern"].search(line)
 
         if match:
@@ -170,17 +184,46 @@ def print_findings():
         print(f"  Why:  {finding['description']}\n")
 
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description="Gitea Source Recon Scanner"
+    )
+
+    parser.add_argument(
+        "directory",
+        help="Path to the source code directory to scan"
+    )
+
+    parser.add_argument(
+        "--scan",
+        choices=["all", "secrets", "endpoints", "sinks", "sources", "paths"],
+        default="all",
+        help="Specify category to scan for (default: all)"
+    )
+
+    return parser.parse_args()
+
 def main():
-    target_directory = "./test_repo"
+    global CURRENT_SCAN_MODE
+
+    args = parse_arguments()
+    target_directory = args.directory
+    scan_mode = args.scan
+
+    # Set global scan mode AFTER parsing args
+    CURRENT_SCAN_MODE = scan_mode
 
     if not os.path.isdir(target_directory):
         print(f"[!] Directory not found: {target_directory}")
         return
 
     print(f"[*] Scanning directory: {target_directory}")
+    print(f"[*] Scan mode: {scan_mode}")
+
     traverse_directory(target_directory)
     print_findings()
     detect_basic_correlations()
+    
 
 
 if __name__ == "__main__":
