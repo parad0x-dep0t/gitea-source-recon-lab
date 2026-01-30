@@ -34,18 +34,31 @@ def apply_rules(file_path, line, line_number):
     Store findings instead of printing immediately.
     """
     for rule in RULES:
-        if rule["pattern"].search(line):
+        match = rule["pattern"].search(line)
+
+        if match:
             finding = {
                 "priority": rule["priority"],
                 "category": rule["category"],
                 "rule_id": rule["id"],
                 "file": file_path,
                 "line": line_number,
-                "code": line.strip(),
                 "description": rule["description"]
             }
-            FINDINGS.append(finding)
 
+            # Special extraction for endpoint rule
+            if rule.get("extract"):
+                method_raw = match.group(1)
+                route = match.group(2)
+
+                method = method_raw.split(".")[-1].upper()
+
+                finding["route"] = route
+                finding["method"] = method
+            else:
+                finding["code"] = line.strip()
+
+            FINDINGS.append(finding)
 
 def scan_file(file_path):
     try:
