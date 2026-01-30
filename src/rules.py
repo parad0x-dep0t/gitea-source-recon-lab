@@ -18,5 +18,14 @@ RULES = [
             r'(password|passwd|pwd|db_pass|db_password)\s*=\s*["\'][^"\']+["\']',
             re.IGNORECASE
         )
+    },
+    {
+        "id": "ABSOLUTE_PATH",
+        "category": "PATH",
+        "priority": "P1",
+        "description": "Hardcoded absolute paths may reveal sensitive directories or enable path traversal attacks.",
+        "pattern": re.compile(
+            r'["\']/(var|home|opt|etc|usr)/[^"\']+["\']'
+        )
     }
 ]
