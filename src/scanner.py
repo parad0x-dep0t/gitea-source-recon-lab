@@ -2,7 +2,7 @@
 scanner.py
 
 MVP source code scanner.
-Step 2: Directory traversal + file extension filtering.
+Step 3: Directory traversal + extension filtering + line-by-line reading.
 """
 
 import os
@@ -27,19 +27,29 @@ def is_supported_file(file_name):
     return ext.lower() in SUPPORTED_EXTENSIONS
 
 
+def scan_file(file_path):
+    """
+    Read file line-by-line.
+    (No detection logic yet.)
+    """
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            for line_number, line in enumerate(f, start=1):
+                # For now, just print line numbers for proof of reading
+                print(f"[READ] {file_path}:{line_number}")
+    except Exception as e:
+        print(f"[ERROR] Could not read {file_path}: {e}")
+
+
 def traverse_directory(root_path):
     """
-    Recursively walk through a directory and print supported files.
+    Recursively walk through a directory and scan supported files.
     """
     for root, dirs, files in os.walk(root_path):
         for file_name in files:
             if is_supported_file(file_name):
                 full_path = os.path.join(root, file_name)
-                print(f"[SUPPORTED] {full_path}")
-            else:
-                # Uncomment below if you want to see skipped files
-                # print(f"[SKIPPED] {file_name}")
-                pass
+                scan_file(full_path)
 
 
 def main():
