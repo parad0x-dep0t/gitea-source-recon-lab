@@ -27,5 +27,16 @@ RULES = [
         "pattern": re.compile(
             r'["\']/(var|home|opt|etc|usr)/[^"\']+["\']'
         )
+    },
+    {
+    "id": "WEB_ENDPOINT",
+    "category": "ENDPOINT",
+    "priority": "P1",
+    "description": "Exposed web route detected. May reveal attack surface or hidden functionality.",
+    "pattern": re.compile(
+        r'(app\.get|app\.post|router\.get|router\.post)\s*\(\s*["\']([^"\']+)["\']',
+        re.IGNORECASE
+    ),
+    "extract": True
     }
 ]
