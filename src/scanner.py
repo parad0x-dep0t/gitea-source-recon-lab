@@ -93,35 +93,58 @@ def priority_sort_key(finding):
 
 def detect_basic_correlations():
     """
-    Detect simple SOURCE → SINK correlation within same file.
+    Detect simple SOURCE → SINK correlations and print matched lines.
     """
     file_map = {}
 
     # Group findings by file
     for finding in FINDINGS:
         file_name = finding["file"]
-        category = finding["category"]
 
         if file_name not in file_map:
-            file_map[file_name] = set()
+            file_map[file_name] = []
 
-        file_map[file_name].add(category)
+        file_map[file_name].append(finding)
 
-    # Check for SOURCE + SINK in same file
     print("\n=== CORRELATION WARNINGS ===\n")
 
     correlation_found = False
 
-    for file_name, categories in file_map.items():
-        if "SOURCE" in categories and "SINK" in categories:
-            correlation_found = True
-            print(f"  Potential RCE Chain Detected in: {file_name}")
-            print("    SOURCE and SINK found in same file.\n")
+    for file_name, findings in file_map.items():
 
-        if "SOURCE" in categories and "FILE_SINK" in categories:
+        sources = [f for f in findings if f["category"] == "SOURCE"]
+        sinks = [f for f in findings if f["category"] == "SINK"]
+        file_sinks = [f for f in findings if f["category"] == "FILE_SINK"]
+
+        # SOURCE + SINK → Potential RCE
+        if sources and sinks:
             correlation_found = True
-            print(f"  Potential Path Traversal Chain in: {file_name}")
-            print("    SOURCE and FILE_SINK found in same file.\n")
+            print(f"!!!  Potential RCE Chain Detected in: {file_name}\n")
+
+            print("    SOURCE:")
+            for s in sources:
+                print(f"        Line {s['line']} → {s.get('code')}")
+
+            print("\n    SINK:")
+            for s in sinks:
+                print(f"        Line {s['line']} → {s.get('code')}")
+
+            print("\n")
+
+        # SOURCE + FILE_SINK → Potential Path Traversal
+        if sources and file_sinks:
+            correlation_found = True
+            print(f"!!!  Potential Path Traversal Chain in: {file_name}\n")
+
+            print("    SOURCE:")
+            for s in sources:
+                print(f"        Line {s['line']} → {s.get('code')}")
+
+            print("\n    FILE_SINK:")
+            for s in file_sinks:
+                print(f"        Line {s['line']} → {s.get('code')}")
+
+            print("\n")
 
     if not correlation_found:
         print("No obvious SOURCE → SINK correlations detected.\n")
