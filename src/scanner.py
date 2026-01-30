@@ -253,16 +253,12 @@ def main():
 
 def print_summary():
     print("=== SUMMARY ===\n")
-
     summary = {}
-
     for finding in FINDINGS:
         category = finding["category"]
         summary[category] = summary.get(category, 0) + 1
-
     for category, count in summary.items():
         print(f"{category}: {count}")
-
     print(f"\nTotal Findings: {len(FINDINGS)}\n")
 
 def export_json():
