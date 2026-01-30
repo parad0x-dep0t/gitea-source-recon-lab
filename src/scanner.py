@@ -146,6 +146,7 @@ def print_findings():
             print(f"  Code: {finding.get('code')}")
         print(f"  Why:  {finding['description']}\n")
 
+
 def main():
     target_directory = "./test_repo"
 
@@ -156,6 +157,7 @@ def main():
     print(f"[*] Scanning directory: {target_directory}")
     traverse_directory(target_directory)
     print_findings()
+    detect_basic_correlations()
 
 
 if __name__ == "__main__":
