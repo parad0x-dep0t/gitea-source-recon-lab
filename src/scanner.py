@@ -36,21 +36,23 @@ def apply_rules(file_path, line, line_number, scan_mode):
     """
     Apply all detection rules to a single line.
     Store findings instead of printing immediately.
-    Scan Mode
     """
+
     for rule in RULES:
-        # Filter rules based on scan mode
+
+        # ---- Scan Mode Filtering ----
         if scan_mode != "all":
-            if CURRENT_SCAN_MODE == "secrets" and rule["category"] != "SECRET":
+            if scan_mode == "secrets" and rule["category"] != "SECRET":
                 continue
-            if CURRENT_SCAN_MODE == "endpoints" and rule["category"] != "ENDPOINT":
+            if scan_mode == "endpoints" and rule["category"] != "ENDPOINT":
                 continue
-            if CURRENT_SCAN_MODE == "sinks" and rule["category"] != "SINK":
+            if scan_mode == "sinks" and rule["category"] != "SINK":
                 continue
-            if CURRENT_SCAN_MODE == "sources" and rule["category"] != "SOURCE":
+            if scan_mode == "sources" and rule["category"] != "SOURCE":
                 continue
-            if CURRENT_SCAN_MODE == "paths" and rule["category"] not in ["PATH", "FILE_SINK"]:
+            if scan_mode == "paths" and rule["category"] not in ["PATH", "FILE_SINK"]:
                 continue
+
         match = rule["pattern"].search(line)
 
         if match:
@@ -76,6 +78,7 @@ def apply_rules(file_path, line, line_number, scan_mode):
                 finding["code"] = line.strip()
 
             FINDINGS.append(finding)
+
 
 def scan_file(file_path, scan_mode):
     try:
