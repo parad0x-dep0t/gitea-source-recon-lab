@@ -234,6 +234,12 @@ def parse_arguments():
         help="Gitea API token"
     )
 
+    parser.add_argument(
+    "--repo",
+    help="Scan only a specific repository (name)"
+    )
+
+
     return parser.parse_args()
 
 

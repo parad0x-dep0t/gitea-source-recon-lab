@@ -33,22 +33,49 @@ class GiteaClient:
         # Unauthenticated search returns wrapped object
         return data.get("data", [])
 
-    def download_repo(self, owner, repo_name, branch="main"):
+    def download_repo(self, owner, repo_name):
         """
-        Download repository as ZIP archive and extract it locally.
+        Download repository using its default branch
+        and avoid double-folder extraction.
         """
-        url = f"{self.api_url}/repos/{owner}/{repo_name}/archive/{branch}.zip"
 
-        response = requests.get(url, headers=self.headers)
+        # Step 1: Get repository metadata
+        repo_info_url = f"{self.api_url}/repos/{owner}/{repo_name}"
+        response = requests.get(repo_info_url, headers=self.headers)
 
         if response.status_code != 200:
-            raise Exception(f"Failed to download repo {repo_name}: {response.text}")
+            raise Exception(f"Failed to fetch repo metadata: {response.text}")
 
-        extract_path = os.path.join("tmp_repos", repo_name)
+        repo_info = response.json()
+        default_branch = repo_info.get("default_branch", "main")
 
-        os.makedirs(extract_path, exist_ok=True)
+        print(f"    -> Default branch: {default_branch}")
 
-        with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-            z.extractall(extract_path)
+        # Step 2: Download archive
+        archive_url = f"{self.api_url}/repos/{owner}/{repo_name}/archive/{default_branch}.zip"
+        archive_response = requests.get(archive_url, headers=self.headers)
+
+        if archive_response.status_code != 200:
+            raise Exception(f"Failed to download repo archive: {archive_response.text}")
+
+        # Ensure tmp folder exists
+        base_tmp_path = "tmp_repos"
+        os.makedirs(base_tmp_path, exist_ok=True)
+
+        # Extract ZIP in memory
+        with zipfile.ZipFile(io.BytesIO(archive_response.content)) as z:
+
+            # Detect top-level folder name inside ZIP
+            top_level_folder = z.namelist()[0].split("/")[0]
+
+            extract_path = os.path.join(base_tmp_path, top_level_folder)
+
+            # Remove existing folder if already present (clean re-run)
+            if os.path.exists(extract_path):
+                import shutil
+                shutil.rmtree(extract_path)
+
+            z.extractall(base_tmp_path)
 
         return extract_path
+
