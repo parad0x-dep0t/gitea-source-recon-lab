@@ -198,8 +198,10 @@ def parse_arguments():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
+    # Make directory OPTIONAL
     parser.add_argument(
         "directory",
+        nargs="?",   # <-- THIS MAKES IT OPTIONAL
         help="Path to the source code directory to scan"
     )
 
@@ -229,9 +231,8 @@ def parse_arguments():
 
     parser.add_argument(
         "--token",
-        help="Gitea API token for authentication"
+        help="Gitea API token"
     )
-
 
     return parser.parse_args()
 
@@ -245,6 +246,12 @@ def main():
     json_output = args.json
     gitea_url = args.gitea
     token = args.token
+
+    # Validation logic
+    if not gitea_url and not target_directory:
+        print("[!] You must provide either a directory or --gitea URL.")
+        return
+
 
     # Clear previous findings
     FINDINGS.clear()
