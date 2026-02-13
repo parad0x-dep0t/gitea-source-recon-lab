@@ -243,21 +243,71 @@ def main():
     scan_mode = args.scan
     quiet_mode = args.quiet
     json_output = args.json
+    gitea_url = args.gitea
+    token = args.token
 
-    if not os.path.isdir(target_directory):
-        print(f"[!] Directory not found: {target_directory}")
-        return
+    # Clear previous findings
+    FINDINGS.clear()
 
     if not quiet_mode:
         print("========================================")
         print("   Gitea Source Recon Scanner")
         print("   CTF-Focused Static Analysis Tool")
         print("========================================")
-        print(f"[*] Directory: {target_directory}")
         print(f"[*] Scan mode: {scan_mode}\n")
 
-    traverse_directory(target_directory, scan_mode)
+    # ===============================
+    # GITEA MODE
+    # ===============================
+    if gitea_url:
 
+        from gitea_client import GiteaClient
+
+        print(f"[*] Connecting to Gitea: {gitea_url}")
+
+        client = GiteaClient(gitea_url, token)
+
+        try:
+            repos = client.list_repositories()
+        except Exception as e:
+            print(f"[!] Failed to connect to Gitea: {e}")
+            return
+
+        if not repos:
+            print("[!] No repositories found.")
+            return
+
+        print(f"[*] Found {len(repos)} repositories.\n")
+
+        for repo in repos:
+            owner = repo["owner"]["login"]
+            repo_name = repo["name"]
+
+            print(f"[+] Downloading {owner}/{repo_name}")
+
+            try:
+                repo_path = client.download_repo(owner, repo_name)
+                traverse_directory(repo_path, scan_mode)
+            except Exception as e:
+                print(f"[!] Failed to scan {repo_name}: {e}")
+
+    # ===============================
+    # LOCAL DIRECTORY MODE
+    # ===============================
+    else:
+
+        if not os.path.isdir(target_directory):
+            print(f"[!] Directory not found: {target_directory}")
+            return
+
+        if not quiet_mode:
+            print(f"[*] Directory: {target_directory}\n")
+
+        traverse_directory(target_directory, scan_mode)
+
+    # ===============================
+    # OUTPUT
+    # ===============================
     if json_output:
         export_json()
     else:
