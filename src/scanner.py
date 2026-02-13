@@ -9,6 +9,7 @@ import os
 import argparse
 import json
 from rules import RULES
+from gitea_client import GiteaClient
 
 
 # Supported file extensions
@@ -220,6 +221,17 @@ def parse_arguments():
         action="store_true",
         help="Suppress banner and non-essential output"
     )
+
+    parser.add_argument(
+        "--gitea",
+        help="Base URL of Gitea instance (e.g., http://gitea.htb)"
+    )
+
+    parser.add_argument(
+        "--token",
+        help="Gitea API token for authentication"
+    )
+
 
     return parser.parse_args()
 
