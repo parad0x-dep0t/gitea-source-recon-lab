@@ -1,0 +1,36 @@
+- id: HARDCODED_PASSWORD
+  category: SECRET
+  priority: P0
+  description: Hardcoded credentials may allow direct authentication.
+  pattern: '(password|passwd|pwd|db_pass|db_password)\s*=\s*["\'][^"\']+["\']'
+
+- id: DANGEROUS_EXECUTION_SINK
+  category: SINK
+  priority: P0
+  description: Potential command execution sink detected.
+  pattern: '(os\.system|subprocess\.call|subprocess\.run|eval|exec|child_process\.exec)\s*\('
+
+- id: WEB_ENDPOINT
+  category: ENDPOINT
+  priority: P1
+  description: Exposed web route detected.
+  pattern: '(app\.get|app\.post|router\.get|router\.post)\s*\(\s*["\']([^"\']+)["\']'
+  extract: true
+
+- id: USER_INPUT_SOURCE
+  category: SOURCE
+  priority: P2
+  description: User-controlled input detected.
+  pattern: '(request\.args|request\.form|req\.query|req\.body|input\s*\()'
+
+- id: ABSOLUTE_PATH
+  category: PATH
+  priority: P1
+  description: Hardcoded absolute path detected.
+  pattern: '["\']/(var|home|opt|etc|usr)/[^"\']+["\']'
+
+- id: FILE_SINK
+  category: FILE_SINK
+  priority: P1
+  description: File operation detected.
+  pattern: '(open|send_file|fs\.readFile|res\.sendFile)\s*\('

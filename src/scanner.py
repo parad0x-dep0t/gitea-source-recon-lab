@@ -8,8 +8,30 @@ Step 6: Finding storage and priority sorting.
 import os
 import argparse
 import json
-from rules import RULES
-from gitea_client import GiteaClient
+import yaml
+import re
+
+
+def load_rules():
+    with open("rules.yaml", "r") as f:
+        raw_rules = yaml.safe_load(f)
+
+    compiled_rules = []
+
+    for rule in raw_rules:
+        compiled_rule = rule.copy()
+        compiled_rule["pattern"] = re.compile(rule["pattern"], re.IGNORECASE)
+        compiled_rules.append(compiled_rule)
+
+        print("Loaded Rules:")
+        for r in compiled_rules:
+            print(r["id"], "->", r["pattern"])
+
+
+    return compiled_rules
+
+
+RULES = load_rules()
 
 
 # Supported file extensions
@@ -22,6 +44,7 @@ SUPPORTED_EXTENSIONS = {
     ".conf"
 }
 
+
 # Global findings list
 FINDINGS = []
 CURRENT_SCAN_MODE = "all"
@@ -30,7 +53,6 @@ CURRENT_SCAN_MODE = "all"
 def is_supported_file(file_name):
     _, ext = os.path.splitext(file_name)
     return ext.lower() in SUPPORTED_EXTENSIONS
-
 
 
 def apply_rules(file_path, line, line_number, scan_mode):
@@ -282,6 +304,15 @@ def main():
 
         try:
             repos = client.list_repositories()
+            repo_filter = args.repo
+
+            if repo_filter:
+                repos = [r for r in repos if r["name"] == repo_filter]
+
+                if not repos:
+                    print(f"[!] Repository '{repo_filter}' not found.")
+                    return
+                
         except Exception as e:
             print(f"[!] Failed to connect to Gitea: {e}")
             return
