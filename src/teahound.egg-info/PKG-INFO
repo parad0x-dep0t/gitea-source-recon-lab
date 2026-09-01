@@ -1,3 +1,20 @@
+Metadata-Version: 2.4
+Name: teahound
+Version: 0.1.0
+Summary: Fast, CTF-focused static analysis & source code reconnaissance tool for Gitea repositories.
+Author: Shubham Maurya
+License: MIT
+Keywords: gitea,reconnaissance,ctf,static-analysis,security,sast
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Topic :: Security
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: requests>=2.31.0
+Dynamic: license-file
+
 # 🍵 TeaHound
 
 > **Fast, CTF-focused static analysis & source code reconnaissance tool for Gitea repositories.**  

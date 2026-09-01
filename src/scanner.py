@@ -1,8 +1,8 @@
 """
-scanner.py
+TeaHound
 
-Gitea Source Code Reconnaissance Scanner (CTF-focused static analysis).
-Extracts secrets, endpoints, dangerous sinks, and correlates attack chains.
+Fast, CTF-focused static analysis & source code reconnaissance tool for Gitea.
+Hunts hardcoded secrets, exposed endpoints, and correlates Source-to-Sink attack chains.
 """
 
 import os
@@ -249,8 +249,8 @@ def export_json():
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        prog="gitea-recon",
-        description="Gitea Source Code Reconnaissance Scanner (CTF-focused)",
+        prog="teahound",
+        description="TeaHound - Fast, CTF-focused static analysis & source code reconnaissance tool for Gitea",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
@@ -329,7 +329,7 @@ def main():
 
     if not quiet_mode and not json_output:
         print("========================================")
-        print("   Gitea Source Recon Scanner")
+        print("   TeaHound - Gitea Recon Scanner")
         print("   CTF-Focused Static Analysis Tool")
         print("========================================")
         print(f"[*] Rules loaded: {len(rules)} from {os.path.basename(rules_file)}")

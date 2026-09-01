@@ -1,0 +1,12 @@
+LICENSE
+README.md
+pyproject.toml
+src/gitea_client.py
+src/rules.py
+src/scanner.py
+src/teahound.egg-info/PKG-INFO
+src/teahound.egg-info/SOURCES.txt
+src/teahound.egg-info/dependency_links.txt
+src/teahound.egg-info/entry_points.txt
+src/teahound.egg-info/requires.txt
+src/teahound.egg-info/top_level.txt
