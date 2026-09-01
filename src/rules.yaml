@@ -1,36 +1,73 @@
 - id: HARDCODED_PASSWORD
   category: SECRET
   priority: P0
-  description: Hardcoded credentials may allow direct authentication.
-  pattern: '(password|passwd|pwd|db_pass|db_password)\s*=\s*["\'][^"\']+["\']'
+  description: Hardcoded credentials or password detected.
+  pattern: '(?i)(password|passwd|pwd|db_pass|db_password)\s*=\s*["''][^"'']+["'']'
+
+- id: API_KEY_TOKEN
+  category: SECRET
+  priority: P0
+  description: Hardcoded API key or auth token detected.
+  pattern: '(?i)(api_key|apikey|secret_key|auth_token|access_token|bearer_token)\s*=\s*["''][A-Za-z0-9_\-\.]{8,}["'']'
+
+- id: JWT_SECRET
+  category: SECRET
+  priority: P0
+  description: Hardcoded JWT secret key detected.
+  pattern: '(?i)(jwt_secret|jwt_key|token_secret)\s*=\s*["''][^"'']+["'']'
+
+- id: AWS_KEY
+  category: SECRET
+  priority: P0
+  description: Potential AWS or cloud access credential detected.
+  pattern: '(AKIA[0-9A-Z]{16}|aws_secret_access_key\s*=\s*["''][^"'']+["''])'
 
 - id: DANGEROUS_EXECUTION_SINK
   category: SINK
   priority: P0
-  description: Potential command execution sink detected.
-  pattern: '(os\.system|subprocess\.call|subprocess\.run|eval|exec|child_process\.exec)\s*\('
+  description: Potential command execution or eval sink detected (RCE risk).
+  pattern: '(os\.system|subprocess\.call|subprocess\.run|subprocess\.Popen|eval|exec|child_process\.exec|shell_exec|passthru)\s*\('
 
-- id: WEB_ENDPOINT
+- id: UNSAFE_DESERIALIZATION_SINK
+  category: SINK
+  priority: P0
+  description: Unsafe object deserialization sink detected.
+  pattern: '(pickle\.loads|yaml\.load\([^,)]+\)|unserialize\s*\(|Marshal\.load)'
+
+- id: RAW_SQL_EXECUTION
+  category: SINK
+  priority: P0
+  description: Potential raw SQL query formatting detected.
+  pattern: '(cursor\.execute|db\.query|sequelize\.query|rawQuery)\s*\(\s*(f["'']|["''].*?%|["''].*?\+)'
+
+- id: WEB_ENDPOINT_EXPRESS
   category: ENDPOINT
   priority: P1
-  description: Exposed web route detected.
-  pattern: '(app\.get|app\.post|router\.get|router\.post)\s*\(\s*["\']([^"\']+)["\']'
+  description: Exposed Express/Node web route detected.
+  pattern: '(app\.get|app\.post|app\.put|app\.delete|router\.get|router\.post|router\.put|router\.delete)\s*\(\s*["'']([^"'']+)["'']'
+  extract: true
+
+- id: WEB_ENDPOINT_FLASK
+  category: ENDPOINT
+  priority: P1
+  description: Exposed Flask/FastAPI route decorator detected.
+  pattern: '(@app\.(?:route|get|post|put|delete)|@router\.(?:get|post|put|delete))\s*\(\s*["'']([^"'']+)["'']'
   extract: true
 
 - id: USER_INPUT_SOURCE
   category: SOURCE
   priority: P2
-  description: User-controlled input detected.
-  pattern: '(request\.args|request\.form|req\.query|req\.body|input\s*\()'
+  description: User-controlled input parameter detected.
+  pattern: '(request\.args|request\.form|request\.get_json|request\.values|req\.query|req\.body|req\.params|\$_GET|\$_POST|\$_REQUEST|input\s*\()'
 
 - id: ABSOLUTE_PATH
   category: PATH
   priority: P1
-  description: Hardcoded absolute path detected.
-  pattern: '["\']/(var|home|opt|etc|usr)/[^"\']+["\']'
+  description: Hardcoded sensitive filesystem path detected.
+  pattern: '["'']/(var|home|opt|etc|usr|root|tmp)/[^"'']+["'']'
 
-- id: FILE_SINK
+- id: DANGEROUS_FILE_SINK
   category: FILE_SINK
   priority: P1
-  description: File operation detected.
-  pattern: '(open|send_file|fs\.readFile|res\.sendFile)\s*\('
+  description: File read/write operation detected (Path Traversal / LFI risk).
+  pattern: '(open|send_file|send_from_directory|fs\.readFile|fs\.readFileSync|res\.sendFile|file_get_contents|readfile)\s*\('

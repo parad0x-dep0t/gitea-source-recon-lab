@@ -1,53 +1,83 @@
 """
 scanner.py
 
-MVP source code scanner.
-Step 6: Finding storage and priority sorting.
+Gitea Source Code Reconnaissance Scanner (CTF-focused static analysis).
+Extracts secrets, endpoints, dangerous sinks, and correlates attack chains.
 """
 
 import os
+import sys
 import argparse
 import json
-import yaml
 import re
+import yaml
 
+# Ensure robust stdout encoding across platforms
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
-def load_rules():
-    with open("rules.yaml", "r") as f:
-        raw_rules = yaml.safe_load(f)
+# Ensure local imports work regardless of execution working directory
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+if CURRENT_DIR not in sys.path:
+    sys.path.insert(0, CURRENT_DIR)
 
-    compiled_rules = []
+try:
+    from gitea_client import GiteaClient
+except ImportError:
+    GiteaClient = None
 
-    for rule in raw_rules:
-        compiled_rule = rule.copy()
-        compiled_rule["pattern"] = re.compile(rule["pattern"], re.IGNORECASE)
-        compiled_rules.append(compiled_rule)
+# Default rules file location
+DEFAULT_RULES_PATH = os.path.join(CURRENT_DIR, "rules.yaml")
 
-        print("Loaded Rules:")
-        for r in compiled_rules:
-            print(r["id"], "->", r["pattern"])
-
-
-    return compiled_rules
-
-
-RULES = load_rules()
-
-
-# Supported file extensions
+# Supported file extensions for static analysis
 SUPPORTED_EXTENSIONS = {
     ".py",
     ".js",
+    ".ts",
     ".php",
     ".env",
     ".txt",
-    ".conf"
+    ".conf",
+    ".config",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".ini",
+    ".sh",
+    ".bash"
 }
 
-
-# Global findings list
+# Global state
 FINDINGS = []
-CURRENT_SCAN_MODE = "all"
+
+
+def load_rules(rules_path=DEFAULT_RULES_PATH):
+    """
+    Load and compile detection rules from YAML.
+    """
+    if not os.path.isfile(rules_path):
+        raise FileNotFoundError(f"Rules file not found at: {rules_path}")
+
+    with open(rules_path, "r", encoding="utf-8") as f:
+        raw_rules = yaml.safe_load(f)
+
+    if not isinstance(raw_rules, list):
+        raise ValueError(f"Invalid rule format in {rules_path}. Expected a list of rule definitions.")
+
+    compiled_rules = []
+    for rule in raw_rules:
+        compiled_rule = rule.copy()
+        try:
+            compiled_rule["pattern"] = re.compile(rule["pattern"], re.IGNORECASE)
+            compiled_rules.append(compiled_rule)
+        except re.error as e:
+            print(f"[!] Warning: Failed to compile regex for rule '{rule.get('id')}': {e}", file=sys.stderr)
+
+    return compiled_rules
 
 
 def is_supported_file(file_name):
@@ -55,76 +85,77 @@ def is_supported_file(file_name):
     return ext.lower() in SUPPORTED_EXTENSIONS
 
 
-def apply_rules(file_path, line, line_number, scan_mode):
+def apply_rules(rules, file_path, line, line_number, scan_mode):
     """
-    Apply all detection rules to a single line.
-    Store findings instead of printing immediately.
+    Apply detection rules to a line of source code.
     """
-
-    for rule in RULES:
+    for rule in rules:
+        category = rule.get("category", "").upper()
 
         # ---- Scan Mode Filtering ----
         if scan_mode != "all":
-            if scan_mode == "secrets" and rule["category"] != "SECRET":
+            if scan_mode == "secrets" and category != "SECRET":
                 continue
-            if scan_mode == "endpoints" and rule["category"] != "ENDPOINT":
+            if scan_mode == "endpoints" and category != "ENDPOINT":
                 continue
-            if scan_mode == "sinks" and rule["category"] != "SINK":
+            if scan_mode == "sinks" and category not in ["SINK", "FILE_SINK"]:
                 continue
-            if scan_mode == "sources" and rule["category"] != "SOURCE":
+            if scan_mode == "sources" and category != "SOURCE":
                 continue
-            if scan_mode == "paths" and rule["category"] not in ["PATH", "FILE_SINK"]:
+            if scan_mode == "paths" and category != "PATH":
                 continue
 
         match = rule["pattern"].search(line)
-
         if match:
             finding = {
-                "priority": rule["priority"],
-                "category": rule["category"],
-                "rule_id": rule["id"],
-                "file": file_path,
+                "priority": rule.get("priority", "P3"),
+                "category": category,
+                "rule_id": rule.get("id"),
+                "file": file_path.replace("\\", "/"),
                 "line": line_number,
-                "description": rule["description"]
+                "description": rule.get("description", "")
             }
 
-            # Special extraction for endpoint rule
-            if rule.get("extract"):
-                method_raw = match.group(1)
-                route = match.group(2)
-
-                method = method_raw.split(".")[-1].upper()
-
-                finding["route"] = route
-                finding["method"] = method
+            # Special endpoint route extraction if regex has capture groups
+            if rule.get("extract") and match.groups():
+                groups = match.groups()
+                if len(groups) >= 2:
+                    raw_method = groups[0]
+                    finding["route"] = groups[1]
+                    finding["method"] = raw_method.split(".")[-1].replace("@", "").upper()
+                else:
+                    finding["route"] = groups[0]
+                    finding["method"] = "HTTP"
             else:
                 finding["code"] = line.strip()
 
             FINDINGS.append(finding)
 
 
-def scan_file(file_path, scan_mode):
+def scan_file(rules, file_path, scan_mode):
+    """
+    Read and scan a single file line-by-line.
+    """
     try:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             for line_number, line in enumerate(f, start=1):
-                apply_rules(file_path, line, line_number, scan_mode)
+                apply_rules(rules, file_path, line, line_number, scan_mode)
     except Exception as e:
-        print(f"[ERROR] Could not read {file_path}: {e}")
+        print(f"[ERROR] Could not read {file_path}: {e}", file=sys.stderr)
 
 
-def traverse_directory(root_path, scan_mode):
-    for root, dirs, files in os.walk(root_path):
+def traverse_directory(rules, root_path, scan_mode):
+    """
+    Recursively scan all supported files in directory.
+    """
+    for root, _, files in os.walk(root_path):
         for file_name in files:
             if is_supported_file(file_name):
                 full_path = os.path.join(root, file_name)
-                scan_file(full_path, scan_mode)
+                scan_file(rules, full_path, scan_mode)
 
 
 def priority_sort_key(finding):
-    """
-    Convert priority label into sortable value.
-    Lower number = higher priority.
-    """
     priority_map = {
         "P0": 0,
         "P1": 1,
@@ -134,63 +165,51 @@ def priority_sort_key(finding):
     return priority_map.get(finding["priority"], 99)
 
 
-def detect_basic_correlations():
+def detect_correlations():
     """
-    Detect simple SOURCE → SINK correlations and print matched lines.
+    Detect source-to-sink correlations in the same file (potential attack chains).
     """
     file_map = {}
-
-    # Group findings by file
     for finding in FINDINGS:
         file_name = finding["file"]
-
         if file_name not in file_map:
             file_map[file_name] = []
-
         file_map[file_name].append(finding)
 
-    print("\n=== CORRELATION WARNINGS ===\n")
-
+    print("\n=== CORRELATION & ATTACK CHAIN WARNINGS ===")
     correlation_found = False
 
     for file_name, findings in file_map.items():
-
         sources = [f for f in findings if f["category"] == "SOURCE"]
         sinks = [f for f in findings if f["category"] == "SINK"]
         file_sinks = [f for f in findings if f["category"] == "FILE_SINK"]
 
-        # SOURCE + SINK → Potential RCE
+        # SOURCE + SINK -> Potential RCE
         if sources and sinks:
             correlation_found = True
-            print(f"!!!  Potential RCE Chain Detected in: {file_name}\n")
-
-            print("    SOURCE:")
+            print(f"\n[!] POTENTIAL RCE CHAIN DETECTED: {file_name}")
+            print("    [+] User Input Sources:")
             for s in sources:
-                print(f"        Line {s['line']} → {s.get('code')}")
-
-            print("\n    SINK:")
+                print(f"        Line {s['line']}: {s.get('code')}")
+            print("    [-] Dangerous Execution Sinks:")
             for s in sinks:
-                print(f"        Line {s['line']} → {s.get('code')}")
+                print(f"        Line {s['line']}: {s.get('code')}")
 
-            print("\n")
-
-        # SOURCE + FILE_SINK → Potential Path Traversal
+        # SOURCE + FILE_SINK -> Potential Path Traversal / LFI
         if sources and file_sinks:
             correlation_found = True
-            print(f"!!!  Potential Path Traversal Chain in: {file_name}\n")
-
-            print("    SOURCE:")
+            print(f"\n[!] POTENTIAL PATH TRAVERSAL / LFI CHAIN DETECTED: {file_name}")
+            print("    [+] User Input Sources:")
             for s in sources:
-                print(f"        Line {s['line']} → {s.get('code')}")
-
-            print("\n    FILE_SINK:")
+                print(f"        Line {s['line']}: {s.get('code')}")
+            print("    [-] File Sinks:")
             for s in file_sinks:
-                print(f"        Line {s['line']} → {s.get('code')}")
-
-            print("\n")
+                print(f"        Line {s['line']}: {s.get('code')}")
 
     if not correlation_found:
-        print("No obvious SOURCE → SINK correlations detected.\n")
+        print("No immediate single-file SOURCE -> SINK correlations detected.\n")
+    else:
+        print("")
 
 
 def print_findings():
@@ -198,33 +217,53 @@ def print_findings():
         print("\n[+] No findings detected.")
         return
 
-    print("\n=== SCAN RESULTS ===\n")
-
-    # Sort findings by priority
+    print("\n=== SCAN FINDINGS ===")
     sorted_findings = sorted(FINDINGS, key=priority_sort_key)
-    
+
     for finding in sorted_findings:
-        print(f"[{finding['priority']}][{finding['category']}] {finding['file']}:{finding['line']}")
+        print(f"\n[{finding['priority']}][{finding['category']}] {finding['file']}:{finding['line']}")
         if finding["category"] == "ENDPOINT":
             print(f"  Route:  {finding.get('route')}")
-            print(f"  Method: {finding.get('method')}")
+            if finding.get('method'):
+                print(f"  Method: {finding.get('method')}")
         else:
-            print(f"  Code: {finding.get('code')}")
-        print(f"  Why:  {finding['description']}\n")
+            print(f"  Code:   {finding.get('code')}")
+        print(f"  Why:    {finding['description']}")
+
+
+def print_summary():
+    print("=== SUMMARY ===")
+    summary = {}
+    for finding in FINDINGS:
+        category = finding["category"]
+        summary[category] = summary.get(category, 0) + 1
+
+    for category, count in sorted(summary.items()):
+        print(f"  {category:<12}: {count}")
+    print(f"\nTotal Findings: {len(FINDINGS)}\n")
+
+
+def export_json():
+    print(json.dumps(FINDINGS, indent=2))
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
         prog="gitea-recon",
-        description="Gitea Source Code Recon Scanner (CTF-focused)",
+        description="Gitea Source Code Reconnaissance Scanner (CTF-focused)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
-    # Make directory OPTIONAL
     parser.add_argument(
         "directory",
-        nargs="?",   # <-- THIS MAKES IT OPTIONAL
+        nargs="?",
         help="Path to the source code directory to scan"
+    )
+
+    parser.add_argument(
+        "--rules",
+        default=DEFAULT_RULES_PATH,
+        help="Custom YAML rules file path"
     )
 
     parser.add_argument(
@@ -248,19 +287,18 @@ def parse_arguments():
 
     parser.add_argument(
         "--gitea",
-        help="Base URL of Gitea instance (e.g., http://gitea.htb)"
+        help="Base URL of Gitea instance (e.g., http://gitea.htb:3000)"
     )
 
     parser.add_argument(
         "--token",
-        help="Gitea API token"
+        help="Gitea API token (for authenticated scan)"
     )
 
     parser.add_argument(
-    "--repo",
-    help="Scan only a specific repository (name)"
+        "--repo",
+        help="Scan only a specific repository name"
     )
-
 
     return parser.parse_args()
 
@@ -274,104 +312,90 @@ def main():
     json_output = args.json
     gitea_url = args.gitea
     token = args.token
+    rules_file = args.rules
 
-    # Validation logic
     if not gitea_url and not target_directory:
-        print("[!] You must provide either a directory or --gitea URL.")
+        print("[!] Error: You must provide either a target directory or a --gitea URL.", file=sys.stderr)
+        parser = parse_arguments()
         return
 
+    try:
+        rules = load_rules(rules_file)
+    except Exception as e:
+        print(f"[!] Failed to load rules: {e}", file=sys.stderr)
+        sys.exit(1)
 
-    # Clear previous findings
     FINDINGS.clear()
 
-    if not quiet_mode:
+    if not quiet_mode and not json_output:
         print("========================================")
         print("   Gitea Source Recon Scanner")
         print("   CTF-Focused Static Analysis Tool")
         print("========================================")
-        print(f"[*] Scan mode: {scan_mode}\n")
+        print(f"[*] Rules loaded: {len(rules)} from {os.path.basename(rules_file)}")
+        print(f"[*] Scan mode   : {scan_mode}\n")
 
-    # ===============================
-    # GITEA MODE
-    # ===============================
+    # GITEA REMOTE SCAN MODE
     if gitea_url:
+        if GiteaClient is None:
+            print("[!] Error: GiteaClient module is missing.", file=sys.stderr)
+            sys.exit(1)
 
-        from gitea_client import GiteaClient
-
-        print(f"[*] Connecting to Gitea: {gitea_url}")
+        if not quiet_mode and not json_output:
+            print(f"[*] Connecting to Gitea instance: {gitea_url}")
 
         client = GiteaClient(gitea_url, token)
-
         try:
             repos = client.list_repositories()
-            repo_filter = args.repo
-
-            if repo_filter:
-                repos = [r for r in repos if r["name"] == repo_filter]
-
+            if args.repo:
+                repos = [r for r in repos if r.get("name") == args.repo]
                 if not repos:
-                    print(f"[!] Repository '{repo_filter}' not found.")
+                    print(f"[!] Repository '{args.repo}' not found on target Gitea.", file=sys.stderr)
                     return
-                
         except Exception as e:
-            print(f"[!] Failed to connect to Gitea: {e}")
+            print(f"[!] Failed to query Gitea: {e}", file=sys.stderr)
             return
 
         if not repos:
-            print("[!] No repositories found.")
+            if not quiet_mode and not json_output:
+                print("[!] No repositories found.")
             return
 
-        print(f"[*] Found {len(repos)} repositories.\n")
+        if not quiet_mode and not json_output:
+            print(f"[*] Found {len(repos)} accessible repositories.\n")
 
         for repo in repos:
-            owner = repo["owner"]["login"]
-            repo_name = repo["name"]
+            owner = repo.get("owner", {}).get("login", "unknown")
+            repo_name = repo.get("name", "unknown")
 
-            print(f"[+] Downloading {owner}/{repo_name}")
+            if not quiet_mode and not json_output:
+                print(f"[+] Downloading & extracting {owner}/{repo_name}...")
 
             try:
                 repo_path = client.download_repo(owner, repo_name)
-                traverse_directory(repo_path, scan_mode)
+                traverse_directory(rules, repo_path, scan_mode)
             except Exception as e:
-                print(f"[!] Failed to scan {repo_name}: {e}")
+                print(f"[!] Failed to download/scan {owner}/{repo_name}: {e}", file=sys.stderr)
 
-    # ===============================
-    # LOCAL DIRECTORY MODE
-    # ===============================
+    # LOCAL DIRECTORY SCAN MODE
     else:
-
         if not os.path.isdir(target_directory):
-            print(f"[!] Directory not found: {target_directory}")
-            return
+            print(f"[!] Error: Target directory '{target_directory}' does not exist.", file=sys.stderr)
+            sys.exit(1)
 
-        if not quiet_mode:
-            print(f"[*] Directory: {target_directory}\n")
+        if not quiet_mode and not json_output:
+            print(f"[*] Scanning local path: {target_directory}\n")
 
-        traverse_directory(target_directory, scan_mode)
+        traverse_directory(rules, target_directory, scan_mode)
 
-    # ===============================
-    # OUTPUT
-    # ===============================
+    # OUTPUT PRESENTATION
     if json_output:
         export_json()
     else:
         print_findings()
-        detect_basic_correlations()
+        detect_correlations()
         print_summary()
 
-
-def print_summary():
-    print("=== SUMMARY ===\n")
-    summary = {}
-    for finding in FINDINGS:
-        category = finding["category"]
-        summary[category] = summary.get(category, 0) + 1
-    for category, count in summary.items():
-        print(f"{category}: {count}")
-    print(f"\nTotal Findings: {len(FINDINGS)}\n")
-
-def export_json():
-    print(json.dumps(FINDINGS, indent=4))
 
 if __name__ == "__main__":
     main()

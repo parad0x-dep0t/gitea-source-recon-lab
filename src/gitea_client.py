@@ -1,12 +1,22 @@
-import requests
-import zipfile
-import io
+"""
+gitea_client.py
+
+Client library for interacting with Gitea REST API.
+Handles repository discovery, enumeration, and archive extraction.
+"""
+
 import os
+import io
+import shutil
+import zipfile
+import requests
+
 
 class GiteaClient:
-    def __init__(self, base_url, token=None):
+    def __init__(self, base_url, token=None, timeout=15):
         self.base_url = base_url.rstrip("/")
         self.api_url = f"{self.base_url}/api/v1"
+        self.timeout = timeout
         self.headers = {}
 
         if token:
@@ -14,15 +24,17 @@ class GiteaClient:
 
     def list_repositories(self):
         """
-        List repositories accessible to the user.
-        Works for both authenticated and unauthenticated access.
+        List repositories accessible to the user or public repositories.
         """
-        url = f"{self.api_url}/user/repos" if self.headers else f"{self.api_url}/repos/search"
+        url = f"{self.api_url}/user/repos" if "Authorization" in self.headers else f"{self.api_url}/repos/search"
 
-        response = requests.get(url, headers=self.headers)
+        try:
+            response = requests.get(url, headers=self.headers, timeout=self.timeout)
+        except requests.RequestException as e:
+            raise RuntimeError(f"Network error connecting to Gitea at {self.base_url}: {e}")
 
         if response.status_code != 200:
-            raise Exception(f"Failed to list repositories: {response.text}")
+            raise RuntimeError(f"Failed to list repositories (HTTP {response.status_code}): {response.text}")
 
         data = response.json()
 
@@ -30,52 +42,51 @@ class GiteaClient:
         if isinstance(data, list):
             return data
 
-        # Unauthenticated search returns wrapped object
+        # Unauthenticated search returns wrapped object { "data": [...] }
         return data.get("data", [])
 
-    def download_repo(self, owner, repo_name):
+    def download_repo(self, owner, repo_name, destination_dir="tmp_repos"):
         """
-        Download repository using its default branch
-        and avoid double-folder extraction.
+        Download repository using its default branch ZIP archive and extract it.
         """
-
-        # Step 1: Get repository metadata
+        # Step 1: Get repository metadata for default branch
         repo_info_url = f"{self.api_url}/repos/{owner}/{repo_name}"
-        response = requests.get(repo_info_url, headers=self.headers)
+        try:
+            response = requests.get(repo_info_url, headers=self.headers, timeout=self.timeout)
+        except requests.RequestException as e:
+            raise RuntimeError(f"Network error fetching repository metadata for {owner}/{repo_name}: {e}")
 
         if response.status_code != 200:
-            raise Exception(f"Failed to fetch repo metadata: {response.text}")
+            raise RuntimeError(f"Failed to fetch metadata for {owner}/{repo_name} (HTTP {response.status_code}): {response.text}")
 
         repo_info = response.json()
         default_branch = repo_info.get("default_branch", "main")
 
-        print(f"    -> Default branch: {default_branch}")
-
         # Step 2: Download archive
         archive_url = f"{self.api_url}/repos/{owner}/{repo_name}/archive/{default_branch}.zip"
-        archive_response = requests.get(archive_url, headers=self.headers)
+        try:
+            archive_response = requests.get(archive_url, headers=self.headers, timeout=self.timeout)
+        except requests.RequestException as e:
+            raise RuntimeError(f"Network error downloading archive from {archive_url}: {e}")
 
         if archive_response.status_code != 200:
-            raise Exception(f"Failed to download repo archive: {archive_response.text}")
+            raise RuntimeError(f"Failed to download repository archive (HTTP {archive_response.status_code}): {archive_response.text}")
 
-        # Ensure tmp folder exists
-        base_tmp_path = "tmp_repos"
-        os.makedirs(base_tmp_path, exist_ok=True)
+        os.makedirs(destination_dir, exist_ok=True)
 
-        # Extract ZIP in memory
+        # Step 3: Extract ZIP
         with zipfile.ZipFile(io.BytesIO(archive_response.content)) as z:
+            namelist = z.namelist()
+            if not namelist:
+                raise ValueError("Downloaded archive is empty.")
 
-            # Detect top-level folder name inside ZIP
-            top_level_folder = z.namelist()[0].split("/")[0]
+            top_level_folder = namelist[0].split("/")[0]
+            extract_path = os.path.join(destination_dir, top_level_folder)
 
-            extract_path = os.path.join(base_tmp_path, top_level_folder)
-
-            # Remove existing folder if already present (clean re-run)
+            # Clean re-run
             if os.path.exists(extract_path):
-                import shutil
-                shutil.rmtree(extract_path)
+                shutil.rmtree(extract_path, ignore_errors=True)
 
-            z.extractall(base_tmp_path)
+            z.extractall(destination_dir)
 
         return extract_path
-
